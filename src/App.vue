@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
 
-const VAPID_PUBLIC_KEY = 'BPZpBgkTHMVyZWT_OqmzHmO7YioymbdWuq2q5ylM7lH6l58cczprWL6qYS-iCRbLLAY8kO-SGVfkEBshzKzoz3c';
+const VAPID_PUBLIC_KEY = ref(window.localStorage.getItem('VAPID_PUBLIC_KEY'));
 
 const userId = ref(window.localStorage.getItem('userId'))
 
@@ -16,6 +16,21 @@ const loginData = reactive(
 
 /** @type {ServiceWorkerRegistration[]} */
 const serviceWorkers = reactive([])
+
+function base64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - base64.length % 4) % 4);
+  const base64Url = (base64 + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64Url);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 async function handleLogin() {
   fetch(`http://localhost:3000/api/auth/login`, {
@@ -34,6 +49,8 @@ async function handleLogin() {
       window.localStorage.setItem('userId', userId.value)
 
       window.localStorage.setItem('loginData', JSON.stringify(loginData))
+
+      window.localStorage.setItem('VAPID_PUBLIC_KEY', VAPID_PUBLIC_KEY.value)
     });
 }
 
@@ -52,7 +69,7 @@ async function handleRegistration() {
   navigator.serviceWorker.register('sw.js').then(async (reg) => {
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: VAPID_PUBLIC_KEY
+      applicationServerKey: base64ToUint8Array(VAPID_PUBLIC_KEY.value)
     });
   
     await fetch(`http://localhost:3000/api/subscriber/${userId.value}`, {
@@ -120,6 +137,11 @@ onMounted(handleUpdateRegistrations)
           token:
         </label>
         <input :value="token" class="truncate" readonly />
+
+        <label for="VAPID_PUBLIC_KEY">
+          VAPID PUBLIC KEY:
+        </label>
+        <input v-model="VAPID_PUBLIC_KEY" class="truncate" id="VAPID_PUBLIC_KEY" />
         
         <div class="flex flex-col gap-2">
           <label for="email">Email</label>
