@@ -1,17 +1,18 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive } from 'vue';
+import { useLocalStorage } from './composables/useLocalStorage';
 
-const VAPID_PUBLIC_KEY = ref(window.localStorage.getItem('VAPID_PUBLIC_KEY'));
+const { value: VAPID_PUBLIC_KEY } = useLocalStorage('VAPID_PUBLIC_KEY');
 
-const userId = ref(window.localStorage.getItem('userId'))
+const { value: userId } = useLocalStorage('userId')
 
-const token = ref(window.localStorage.getItem('token'))
+const { value: token } = useLocalStorage('token')
 
-const loginData = reactive(
-  JSON.parse(window.localStorage.getItem('loginData')) || {
+const { value: loginData } = reactive(
+  useLocalStorage('loginData', {
     email: '',
     password: ''
-  }
+  })
 )
 
 /** @type {ServiceWorkerRegistration[]} */
@@ -45,12 +46,9 @@ async function handleLogin() {
       token.value = res.token
       userId.value = res.user.id
 
-      window.localStorage.setItem('token', token.value)
-      window.localStorage.setItem('userId', userId.value)
+      loginData.value = res.user
 
-      window.localStorage.setItem('loginData', JSON.stringify(loginData))
-
-      window.localStorage.setItem('VAPID_PUBLIC_KEY', VAPID_PUBLIC_KEY.value)
+      VAPID_PUBLIC_KEY.value = res.vapidPublicKey
     });
 }
 
@@ -133,11 +131,6 @@ onMounted(handleUpdateRegistrations)
       </legend>
       
       <div class="flex flex-col">
-        <label>
-          token:
-        </label>
-        <input :value="token" class="truncate" readonly />
-
         <label for="VAPID_PUBLIC_KEY">
           VAPID PUBLIC KEY:
         </label>
@@ -149,6 +142,11 @@ onMounted(handleUpdateRegistrations)
           <label for="password">Password</label>
           <input v-model="loginData.password" class="truncate" id="password" />
         </div>
+
+        <label>
+          token: (Readonly)
+        </label>
+        <input :value="token" class="truncate" readonly />
       </div>
 
       <input class="p-4 bg-sky-600 rounded-xl cursor-pointer m-2" type="button" value="Login" @click="handleLogin" />
