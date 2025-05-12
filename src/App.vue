@@ -1,0 +1,176 @@
+<script setup>
+import { onMounted, reactive, ref } from 'vue';
+
+const VAPID_PUBLIC_KEY = 'BPZpBgkTHMVyZWT_OqmzHmO7YioymbdWuq2q5ylM7lH6l58cczprWL6qYS-iCRbLLAY8kO-SGVfkEBshzKzoz3c';
+
+const userId = ref(window.localStorage.getItem('userId'))
+
+const token = ref(window.localStorage.getItem('token'))
+
+const loginData = reactive(
+  JSON.parse(window.localStorage.getItem('loginData')) || {
+    email: '',
+    password: ''
+  }
+)
+
+/** @type {ServiceWorkerRegistration[]} */
+const serviceWorkers = reactive([])
+
+async function handleLogin() {
+  fetch(`http://localhost:3000/api/auth/login`, {
+    method: 'POST',
+    body: JSON.stringify(loginData),
+    headers: { 
+      'Content-Type': 'application/json',
+     }
+  })
+    .then((res) => res.json())
+    .then((res) => {
+      token.value = res.token
+      userId.value = res.user.id
+
+      window.localStorage.setItem('token', token.value)
+      window.localStorage.setItem('userId', userId.value)
+
+      window.localStorage.setItem('loginData', JSON.stringify(loginData))
+    });
+}
+
+async function handleRegistration() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    alert('Push not supported in this browser.');
+    return;
+  }
+  
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    alert('Permission denied');
+    return;
+  } 
+  
+  navigator.serviceWorker.register('sw.js').then(async (reg) => {
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: VAPID_PUBLIC_KEY
+    });
+  
+    await fetch(`http://localhost:3000/api/subscriber/${userId.value}`, {
+      method: 'POST',
+      body: JSON.stringify(sub),
+      headers: { 
+        'Content-Type': 'application/json',
+        'authorization': `Bearer ${token.value}`
+        }
+    });
+  
+    handleUpdateRegistrations()
+  });
+}
+
+function handleGetRegistrations() {
+  return navigator.serviceWorker.getRegistrations()
+}
+
+/** @param {ServiceWorkerRegistration} sw */
+async function handleUnregistration(sw) {
+  await Promise.all([
+    sw.unregister(),
+    handleUpdateRegistrations()
+  ])
+
+  await fetch(`http://localhost:3000/api/subscriber/${userId.value}`, {
+    method: 'DELETE',
+    headers: { 
+      'Content-Type': 'application/json',
+      'authorization': `Bearer ${token.value}`
+     }
+  });
+}
+
+function handleUpdateRegistrations() {
+  serviceWorkers.length = 0
+  handleGetRegistrations().then((regs) => serviceWorkers.push(...regs))
+}
+
+async function handleNotificationTest() {
+  await fetch(`http://localhost:3000/api/subscriber/test/${userId.value}`, {
+    method: 'GET',
+    headers: { 
+      'Content-Type': 'application/json',
+      'authorization': `Bearer ${token.value}`
+     }
+  });
+}
+
+onMounted(handleUpdateRegistrations)
+
+</script>
+
+<template>
+  <main class="w-screen h-screen bg-slate-500 overflow-x-hidden flex items-center justify-center gap-4">
+
+    <fieldset class="bg-sky-500 min-w-[400px] h-72 rounded-xl flex flex-col justify-between overflow-x-hidden">
+      <legend class="text-center font-bold bg-sky-600 px-4 rounded-xl">
+        Auth
+      </legend>
+      
+      <div class="flex flex-col">
+        <label>
+          token:
+        </label>
+        <input :value="token" class="truncate" readonly />
+        
+        <div class="flex flex-col gap-2">
+          <label for="email">Email</label>
+          <input v-model="loginData.email" class="truncate" id="email" />
+          <label for="password">Password</label>
+          <input v-model="loginData.password" class="truncate" id="password" />
+        </div>
+      </div>
+
+      <input class="p-4 bg-sky-600 rounded-xl cursor-pointer m-2" type="button" value="Login" @click="handleLogin" />
+    </fieldset>
+    
+    <fieldset class="bg-violet-500 min-w-lg h-64 rounded-xl flex flex-col justify-between overflow-x-hidden">
+      <legend class="text-center font-bold bg-violet-600 px-4 rounded-xl">
+        Identification
+      </legend>
+  
+      <div class="flex flex-col">
+        <label for="userId">userId</label>
+        <input v-model="userId" id="userId" />
+      </div>
+
+      <button class="p-4 bg-violet-600 rounded-xl cursor-pointer m-2" @click="handleNotificationTest">
+        Test Notification
+      </button>
+  
+    </fieldset>
+
+    <fieldset class="bg-amber-500 min-w-lg h-64 rounded-xl flex flex-col justify-between overflow-x-hidden">
+      <legend class="text-center font-bold bg-amber-600 px-4 rounded-xl">
+        Service Workers
+      </legend>
+      
+      <input 
+        type="button" 
+        class="cursor-pointer p-4 bg-amber-600 rounded-xl m-2" 
+        @click="handleRegistration" 
+        value="Activate Notifications" 
+      />
+
+      Actually has {{ serviceWorkers.length }} active!
+    
+      <div class="flex flex-col overflow-y-auto max-w-md">
+        <div v-for="(sw, index) in serviceWorkers" :key="index">
+          {{ index + 1 }}. {{ sw.active?.state }}
+          <button class="p-4 bg-amber-600 rounded-xl m-2" @click="handleUnregistration(sw)">
+            UNREGISTER
+          </button>
+        </div>
+      </div>
+    </fieldset>
+    
+  </main>
+</template>
