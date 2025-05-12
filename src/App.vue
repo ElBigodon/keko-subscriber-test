@@ -47,8 +47,6 @@ async function handleLogin() {
       userId.value = res.user.id
 
       loginData.value = res.user
-
-      VAPID_PUBLIC_KEY.value = res.vapidPublicKey
     });
 }
 
